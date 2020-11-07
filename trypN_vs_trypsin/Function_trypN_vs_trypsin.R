@@ -4,7 +4,7 @@ library(writexl)
 library(dplyr)
 library(ggplot2)
 
-cognate_pairs <- function(peptide_file, evidence_file, residue, output_file = NULL){
+cognate_pairs <- function(peptide_file, evidence_file, residue1, residue2, output_file = NULL, verbose=FALSE){
   peptides <- read_excel(peptide_file)
   evidence <- read_excel(evidence_file, col_types = c("text", 
                                                       "numeric", "text", "text", "text", 
@@ -23,17 +23,19 @@ cognate_pairs <- function(peptide_file, evidence_file, residue, output_file = NU
                                                       "numeric", "text", "numeric", "numeric", 
                                                       "text", "numeric", "text", "numeric", 
                                                       "numeric"))
-  
-  print("loaded files")
-  
+  if (verbose !=FALSE){
+    print("loaded files")
+  }
   
   #divide peptides into two dataframes
   #if it starts with K and the next AA after is K, then it is a trypN peptide
   #if it ends with K and the firsta AA before is K, then it is a trypsin peptide
-  trypN_peptides <- peptides[peptides$`First amino acid` == residue & peptides$`Amino acid after` == residue,]
-  trypsin_peptides <- peptides[peptides$`Last amino acid` == residue & peptides$`Amino acid before` == residue,]
+  trypN_peptides <- peptides[peptides$`First amino acid` == residue1 & peptides$`Amino acid after` == residue2,]
+  trypsin_peptides <- peptides[peptides$`Last amino acid` == residue2 & peptides$`Amino acid before` == residue1,]
   
-  print("made two dataframes")
+  if (verbose !=FALSE){
+    print("made two dataframes")
+  }
   
   #find the "base" peptide, which is the sequence without the leading K (for trypN) or the trailing K (for trypsin)
   trypN_peptides$base_sequence <- substr(trypN_peptides$Sequence, 2, nchar(trypN_peptides$Sequence))
@@ -42,8 +44,9 @@ cognate_pairs <- function(peptide_file, evidence_file, residue, output_file = NU
   #create new dataframe that joins the previous two based on "base" sequence. Retains only base sequences that were in both tables
   valid_peptide_combination <- inner_join(trypsin_peptides, trypN_peptides, by = "base_sequence",
                                     suffix = c(".trypsin", ".trypN"))
-  
-  print("joined dataframes")
+  if (verbose !=FALSE){
+    print("joined dataframes")
+  }
   
   #create columns for calculating average Retention time and std dev of retention time
   valid_peptide_combination$trypN_Retention_time <- 0.0
@@ -52,8 +55,10 @@ cognate_pairs <- function(peptide_file, evidence_file, residue, output_file = NU
   valid_peptide_combination$trypN_RT_stdev <- 0.0
   valid_peptide_combination$trypsin_RT_stdev <- 0.0
   
-  print("created columns")
-
+  if (verbose !=FALSE){
+    print("created columns")
+  }
+  
   #loop to calculate average and stddev of RT for each peptide
   for (i in 1:nrow(valid_peptide_combination)){
     
@@ -77,7 +82,11 @@ cognate_pairs <- function(peptide_file, evidence_file, residue, output_file = NU
     valid_peptide_combination$trypN_RT_stdev[i] <- trypN_RT_stdev
   }
 
-  print("finished loop")
+  
+  if (verbose !=FALSE){
+    print("finished loop")
+  }
+  
   minimum_trypsin_RT <- min(valid_peptide_combination$trypsin_Retention_time)
   minimum_trypN_RT <- min(valid_peptide_combination$trypN_Retention_time)
   minimum_RT <- min(minimum_trypN_RT, minimum_trypsin_RT)
@@ -95,13 +104,58 @@ cognate_pairs <- function(peptide_file, evidence_file, residue, output_file = NU
     theme_bw(base_size = 20) +
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
     #geom_smooth(method = "lm", se = FALSE, formula=y~x-1, fullrange = TRUE) +
-    labs(x = paste0("Retention time of 'peptide+", residue), y = paste0("Retention time of ", residue, "+peptide"))
+    labs(x = paste0("Retention time of 'peptide+", residue2), y = paste0("Retention time of ", residue1, "+peptide"))
   show(plot)
   if (!is.null(output_file)){
     write_xlsx(valid_peptide_combination, output_file)
     print(paste0("Saved table to excel file: ", output_file))
   }
-  print("completed")
+  
+  if (verbose !=FALSE){
+    print("completed")
+  }
+  
   return(valid_peptide_combination)
 }
 
+
+RK_cleavage_pairs <- function(peptide_file, evidence_file, output_file=NULL){
+  k_pairs <- cognate_pairs("peptides.xlsx", "evidence.xlsx", "K", "K")
+  r_pairs <- cognate_pairs("peptides.xlsx", "evidence.xlsx", "R", "R")
+  rk_pairs <- cognate_pairs("peptides.xlsx", "evidence.xlsx", "R", "K")
+  kr_pairs <- cognate_pairs("peptides.xlsx", "evidence.xlsx", "K", "R")
+  
+  
+  
+  k_pairs$cleave_residues <- "KK"
+  r_pairs$cleave_residues <- "RR"
+  rk_pairs$cleave_residues <- "RK"
+  kr_pairs$cleave_residues <- "KR"
+  
+  all_peptides <- rbind(k_pairs, r_pairs, rk_pairs, kr_pairs)
+  
+  min_tryp_rt <- min(all_peptides$trypsin_Retention_time)
+  min_trypN_rt <- min(all_peptides$trypN_Retention_time)
+  min_rt <- min(min_trypN_rt, min_tryp_rt)
+  
+  max_tryp_rt <- max(all_peptides$trypsin_Retention_time)
+  max_trypN_rt <- max(all_peptides$trypN_Retention_time)
+  max_rt <- max(max_trypN_rt, max_tryp_rt)
+  
+  p <- ggplot(all_peptides, aes(trypsin_Retention_time, trypN_Retention_time)) + 
+    geom_point(aes(color = cleave_residues), size = 3) +
+    geom_abline(linetype = "dashed") +
+    xlim(min_rt - (0.05*max_rt), max_rt + (0.05*max_rt)) +
+    ylim(min_rt - (0.05*max_rt), max_rt + (0.05*max_rt)) +
+    theme_bw(base_size = 20) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+    labs(x = "RT of Trypsin Peptide", y = "RT of TrypN Peptide", color = "Cleavage\nResidues")
+  show(p)
+  
+  if (!is.null(output_file)){
+    write_xlsx(valid_peptide_combination, output_file)
+    print(paste0("Saved table to excel file: ", output_file))
+  }
+  
+  return(all_peptides)
+}

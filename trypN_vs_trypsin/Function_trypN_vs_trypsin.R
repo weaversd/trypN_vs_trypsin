@@ -119,18 +119,22 @@ cognate_pairs <- function(peptide_file, evidence_file, residue1, residue2, outpu
 }
 
 
-RK_cleavage_pairs <- function(peptide_file, evidence_file, output_file=NULL){
+RK_cleavage_pairs <- function(peptide_file, evidence_file, point_col="residues", output_file=NULL){
   k_pairs <- cognate_pairs("peptides.xlsx", "evidence.xlsx", "K", "K")
   r_pairs <- cognate_pairs("peptides.xlsx", "evidence.xlsx", "R", "R")
   rk_pairs <- cognate_pairs("peptides.xlsx", "evidence.xlsx", "R", "K")
   kr_pairs <- cognate_pairs("peptides.xlsx", "evidence.xlsx", "K", "R")
   
   
-  
   k_pairs$cleave_residues <- "KK"
   r_pairs$cleave_residues <- "RR"
   rk_pairs$cleave_residues <- "RK"
   kr_pairs$cleave_residues <- "KR"
+  
+  k_pairs$cognate <- "cognates"
+  r_pairs$cognate <- "cognates"
+  rk_pairs$cognate <- "false cognates"
+  kr_pairs$cognate <- "false cognates"
   
   all_peptides <- rbind(k_pairs, r_pairs, rk_pairs, kr_pairs)
   
@@ -142,15 +146,27 @@ RK_cleavage_pairs <- function(peptide_file, evidence_file, output_file=NULL){
   max_trypN_rt <- max(all_peptides$trypN_Retention_time)
   max_rt <- max(max_trypN_rt, max_tryp_rt)
   
-  p <- ggplot(all_peptides, aes(trypsin_Retention_time, trypN_Retention_time)) + 
-    geom_point(aes(color = cleave_residues), size = 3) +
-    geom_abline(linetype = "dashed") +
-    xlim(min_rt - (0.05*max_rt), max_rt + (0.05*max_rt)) +
-    ylim(min_rt - (0.05*max_rt), max_rt + (0.05*max_rt)) +
-    theme_bw(base_size = 20) +
-    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
-    labs(x = "RT of Trypsin Peptide", y = "RT of TrypN Peptide", color = "Cleavage\nResidues")
-  show(p)
+  if (point_col == "residues"){
+    p <- ggplot(all_peptides, aes(trypsin_Retention_time, trypN_Retention_time)) + 
+      geom_point(aes(color = cleave_residues), size = 3) +
+      geom_abline(linetype = "dashed") +
+      xlim(min_rt - (0.05*max_rt), max_rt + (0.05*max_rt)) +
+      ylim(min_rt - (0.05*max_rt), max_rt + (0.05*max_rt)) +
+      theme_bw(base_size = 20) +
+      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+      labs(x = "RT of Trypsin Peptide", y = "RT of TrypN Peptide", color = "Cleavage\nResidues")
+    show(p)
+  } else {
+    p <- ggplot(all_peptides, aes(trypsin_Retention_time, trypN_Retention_time)) + 
+      geom_point(aes(color = cognate), size = 3) +
+      geom_abline(linetype = "dashed") +
+      xlim(min_rt - (0.05*max_rt), max_rt + (0.05*max_rt)) +
+      ylim(min_rt - (0.05*max_rt), max_rt + (0.05*max_rt)) +
+      theme_bw(base_size = 20) +
+      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+      labs(x = "RT of Trypsin Peptide", y = "RT of TrypN Peptide", color = "Peptide\nRelationship")
+    show(p)
+  }
   
   if (!is.null(output_file)){
     write_xlsx(valid_peptide_combination, output_file)
